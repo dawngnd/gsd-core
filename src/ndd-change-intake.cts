@@ -8,7 +8,14 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { tokenizeHeadings } from './markdown-sectionizer.cjs';
 import { platformEnsureDir, platformWriteSync } from './shell-command-projection.cjs';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import frontmatterMod = require('./frontmatter.cjs');
+
+const { extractFrontmatter } = frontmatterMod as {
+  extractFrontmatter: (content: string) => Record<string, unknown>;
+};
 
 const RESERVED_CHANGE_IDS = new Set([
   'aux',
@@ -23,6 +30,8 @@ const RESERVED_CHANGE_IDS = new Set([
 ]);
 
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
+
+export type SourceRole = 'api-doc' | 'business-doc' | 'proposal' | 'acceptance' | 'unknown';
 
 export type ChangeIdValidationErrorCode =
   | 'empty'
@@ -101,6 +110,36 @@ export interface InitializeChangeWorkspaceResult extends ChangeWorkspaceResoluti
   resumed: boolean;
 }
 
+export interface InferredSourceRole {
+  role: SourceRole;
+  evidence: string;
+}
+
+export interface IngestedSource {
+  original_path: string;
+  copied_path: string;
+  absolute_source_path: string;
+  absolute_copied_path: string;
+  role: SourceRole;
+  evidence: string;
+  warnings: string[];
+}
+
+export interface IngestMarkdownSourcesOptions {
+  projectRoot: string;
+  sourceFolder: string;
+  changeId?: string;
+  now?: Date | string;
+}
+
+export interface IngestMarkdownSourcesResult extends InitializeChangeWorkspaceResult {
+  source_folder: string;
+  sources_dir: string;
+  manifest_path: string;
+  sources: IngestedSource[];
+  warnings: string[];
+}
+
 function validationFailure(code: ChangeIdValidationErrorCode, message: string): ChangeIdValidationFailure {
   return { valid: false, code, message };
 }
@@ -116,6 +155,17 @@ function normalizeRelativePathForHash(value: string): string {
 function isPathInside(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
   return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function toPosixPath(value: string): string {
+  return value.split(path.sep).join('/');
+}
+
+function markdownTableCell(value: string): string {
+  return value
+    .replace(/\r?\n/g, '<br>')
+    .replace(/\|/g, '\\|')
+    .trim();
 }
 
 function canonicalExistingPath(inputPath: string): string {
@@ -187,9 +237,24 @@ export function slugifyChangeStem(value: string): string {
 
 export function discoverMarkdownFiles(sourceFolder: string): string[] {
   const root = path.resolve(sourceFolder);
+  let rootStat: fs.Stats;
+  try {
+    rootStat = fs.statSync(root);
+  } catch {
+    throw new Error(`Source folder does not exist: ${sourceFolder}`);
+  }
+  if (!rootStat.isDirectory()) {
+    throw new Error(`Source folder is not a directory: ${sourceFolder}`);
+  }
+
+  const realRoot = fs.realpathSync(root);
   const files: string[] = [];
 
   function walk(dir: string): void {
+    const realDir = fs.realpathSync(dir);
+    if (!isPathInside(realRoot, realDir)) {
+      throw new Error(`Source folder traversal detected while reading: ${dir}`);
+    }
     const entries = fs.readdirSync(dir, { withFileTypes: true })
       .sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
@@ -227,6 +292,200 @@ export function generateChangeId(sourceFolder: string, markdownFiles?: string[])
     suffix,
     source_folder: canonicalFolder,
     markdown_files: relativeFiles,
+  };
+}
+
+function roleSignals(content: string, fileName: string): { frontmatter: string[]; headings: string[]; text: string } {
+  const frontmatter = extractFrontmatter(content);
+  const frontmatterSignals = Object.entries(frontmatter)
+    .flatMap(([key, value]) => Array.isArray(value) ? [key, ...value.map(String)] : [key, String(value)])
+    .map(value => value.toLowerCase());
+  const headings = tokenizeHeadings(content).map(heading => heading.text.toLowerCase());
+  const text = [
+    fileName,
+    ...frontmatterSignals,
+    ...headings,
+    content.slice(0, 4000),
+  ].join('\n').toLowerCase();
+  return { frontmatter: frontmatterSignals, headings, text };
+}
+
+function evidenceFrom(label: string, match: string): string {
+  return `${label}: ${match}`;
+}
+
+export function inferSourceRole(filePath: string, content: string): InferredSourceRole {
+  const fileName = path.basename(filePath).toLowerCase();
+  const signals = roleSignals(content, fileName);
+
+  const frontmatterRole = signals.frontmatter.find(value => /^(api-doc|business-doc|proposal|acceptance)$/.test(value));
+  if (frontmatterRole) {
+    return { role: frontmatterRole as SourceRole, evidence: evidenceFrom('frontmatter', frontmatterRole) };
+  }
+
+  const candidates: Array<{ role: Exclude<SourceRole, 'unknown'>; label: string; pattern: RegExp }> = [
+    { role: 'acceptance', label: 'acceptance criteria', pattern: /\b(acceptance criteria|acceptance test|given\s+when\s+then|definition of done|uat)\b/ },
+    { role: 'api-doc', label: 'api contract', pattern: /\b(api|endpoint|openapi|swagger|request|response|graphql|rest)\b/ },
+    { role: 'business-doc', label: 'business process', pattern: /\b(business process|workflow|process|policy|rule|customer journey|operational)\b/ },
+    { role: 'proposal', label: 'proposal', pattern: /\b(proposal|rfc|request for comments|approach|recommendation|option)\b/ },
+  ];
+
+  for (const heading of signals.headings) {
+    for (const candidate of candidates) {
+      if (candidate.pattern.test(heading)) {
+        return { role: candidate.role, evidence: evidenceFrom('heading', heading) };
+      }
+    }
+  }
+
+  for (const candidate of candidates) {
+    const fileMatch = candidate.pattern.exec(fileName);
+    if (fileMatch) {
+      return { role: candidate.role, evidence: evidenceFrom('filename', fileMatch[0]) };
+    }
+  }
+
+  for (const candidate of candidates) {
+    const textMatch = candidate.pattern.exec(signals.text);
+    if (textMatch) {
+      return { role: candidate.role, evidence: evidenceFrom('content', textMatch[0]) };
+    }
+  }
+
+  return { role: 'unknown', evidence: '' };
+}
+
+function copySourceFile(sourceRoot: string, workspaceDir: string, sourceFile: string): IngestedSource {
+  const relativePath = toPosixPath(path.relative(sourceRoot, sourceFile));
+  if (relativePath.startsWith('../') || relativePath === '..' || path.isAbsolute(relativePath)) {
+    throw new Error(`Markdown source escapes source folder: ${sourceFile}`);
+  }
+
+  const sourcesDir = path.join(workspaceDir, 'sources');
+  const destination = path.resolve(sourcesDir, ...relativePath.split('/'));
+  if (!isPathInside(sourcesDir, destination) || !isPathInside(workspaceDir, destination)) {
+    throw new Error(`Copied source path escapes change workspace: ${relativePath}`);
+  }
+
+  platformEnsureDir(path.dirname(destination));
+  fs.copyFileSync(sourceFile, destination);
+  const content = fs.readFileSync(sourceFile, 'utf-8');
+  const inference = inferSourceRole(relativePath, content);
+
+  return {
+    original_path: relativePath,
+    copied_path: toPosixPath(path.relative(workspaceDir, destination)),
+    absolute_source_path: sourceFile,
+    absolute_copied_path: destination,
+    role: inference.role,
+    evidence: inference.evidence,
+    warnings: [],
+  };
+}
+
+function duplicateBasenameWarnings(sources: IngestedSource[]): string[] {
+  const byBasename = new Map<string, string[]>();
+  for (const source of sources) {
+    const key = path.basename(source.original_path).toLowerCase();
+    byBasename.set(key, [...(byBasename.get(key) ?? []), source.original_path]);
+  }
+
+  const warnings: string[] = [];
+  for (const [basename, paths] of byBasename) {
+    if (paths.length <= 1) continue;
+    const warning = `Duplicate basename "${basename}" preserved by relative source paths: ${paths.join(', ')}`;
+    warnings.push(warning);
+    for (const source of sources) {
+      if (paths.includes(source.original_path)) source.warnings.push('duplicate basename');
+    }
+  }
+  return warnings;
+}
+
+function renderSourceManifest(changeId: string, sourceFolder: string, sources: IngestedSource[], warnings: string[]): string {
+  const lines = [
+    `# Source Manifest: ${changeId}`,
+    '',
+    `Source folder: \`${sourceFolder}\``,
+    '',
+    '| Original relative path | Workspace copied path | Inferred role | Evidence | Warnings |',
+    '| --- | --- | --- | --- | --- |',
+  ];
+
+  for (const source of sources) {
+    lines.push(`| ${[
+      `\`${markdownTableCell(source.original_path)}\``,
+      `\`${markdownTableCell(source.copied_path)}\``,
+      markdownTableCell(source.role),
+      markdownTableCell(source.evidence || ''),
+      markdownTableCell(source.warnings.join('; ')),
+    ].join(' | ')} |`);
+  }
+
+  lines.push('', '## Warnings', '');
+  if (warnings.length === 0) {
+    lines.push('None.');
+  } else {
+    for (const warning of warnings) {
+      lines.push(`- ${warning}`);
+    }
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
+export function ingestMarkdownSources(opts: IngestMarkdownSourcesOptions): IngestMarkdownSourcesResult {
+  if (!opts.sourceFolder || typeof opts.sourceFolder !== 'string') {
+    throw new Error('Source folder is required for NDD change intake.');
+  }
+
+  const requestedSourceRoot = path.resolve(opts.sourceFolder);
+  const markdownFiles = discoverMarkdownFiles(requestedSourceRoot);
+  if (markdownFiles.length === 0) {
+    throw new Error(`Source folder contains no Markdown files: ${opts.sourceFolder}`);
+  }
+  const sourceRoot = fs.realpathSync(requestedSourceRoot);
+
+  const generated = opts.changeId ? null : generateChangeId(sourceRoot, markdownFiles);
+  const changeId = opts.changeId ?? generated?.change_id ?? '';
+  const workspace = initializeChangeWorkspace({
+    projectRoot: opts.projectRoot,
+    changeId,
+    sourceFolder: sourceRoot,
+    sourceCount: markdownFiles.length,
+    artifacts: defaultArtifacts(),
+    warnings: [],
+    now: opts.now,
+    updateIntakeMetadata: true,
+  });
+
+  const sourcesDir = path.join(workspace.workspace_dir, 'sources');
+  platformEnsureDir(sourcesDir);
+  const sources = markdownFiles.map(file => copySourceFile(sourceRoot, workspace.workspace_dir, fs.realpathSync(file)));
+  const warnings = duplicateBasenameWarnings(sources);
+  const manifestPath = path.join(workspace.workspace_dir, 'SOURCE-MANIFEST.md');
+  platformWriteSync(manifestPath, renderSourceManifest(workspace.change_id, sourceRoot, sources, warnings));
+
+  const updatedStatus = statusWithDefaults(readExistingStatus(workspace.status_path), {
+    projectRoot: opts.projectRoot,
+    changeId: workspace.change_id,
+    sourceFolder: sourceRoot,
+    sourceCount: sources.length,
+    artifacts: defaultArtifacts(),
+    warnings,
+    now: opts.now,
+    updateIntakeMetadata: true,
+  });
+  platformWriteSync(workspace.status_path, JSON.stringify(updatedStatus, null, 2) + '\n');
+
+  return {
+    ...workspace,
+    status: updatedStatus,
+    source_folder: sourceRoot,
+    sources_dir: sourcesDir,
+    manifest_path: manifestPath,
+    sources,
+    warnings,
   };
 }
 
@@ -297,4 +556,3 @@ export function initializeChangeWorkspace(opts: InitializeChangeWorkspaceOptions
     resumed: existing !== null,
   };
 }
-
