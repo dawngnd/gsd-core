@@ -261,6 +261,7 @@ const { routeRoadmapCommand } = require('./lib/roadmap-command-router.cjs');
 const { routeAgentCommand } = require('./lib/agent-command-router.cjs');
 const { routeCheckCommand } = require('./lib/check-command-router.cjs');
 const { routeTaskCommand } = require('./lib/task-command-router.cjs');
+const { routeNddCommand } = require('./lib/ndd-command-router.cjs');
 const { parseNamedArgs, parseMultiwordArg } = require('./lib/command-arg-projection.cjs');
 const { cmdGitBaseBranch } = require('./lib/git-base-branch.cjs');
 const { getEffectiveAuthority, classifyDriftSeverity } = require('./lib/plan-drift-guard.cjs');
@@ -663,7 +664,7 @@ async function main() {
     'config-ensure-section, config-get, config-new-project, config-path, config-set, migrate-config, ' +
     'current-timestamp, detect-custom-files, docs-init, drift-guard, effort, extract-messages, find-phase, ' +
     'from-gsd2, frontmatter, gap-analysis, generate-claude-md, generate-claude-profile, ' +
-    'generate-dev-preferences, generate-slug, graphify, history-digest, init, intel, ' +
+    'generate-dev-preferences, generate-slug, graphify, history-digest, init, intel, ndd, ' +
     'capability, classify-confidence, git, learnings, list-seeds, list-todos, loop, milestone, package-legitimacy, phase, phase-plan-index, phases, profile-questionnaire, ' +
     'profile-sample, progress, project-instruction-file, prompt-budget, requirements, research-plan, research-store, resolve-granularity, resolve-model, roadmap, scaffold, state, ' +
     'task, template, user-story, validate, verify, verify-path-exists, verify-summary, eval, workstream, worktree\n\n' +
@@ -1036,6 +1037,11 @@ async function runCommand(command, args, cwd, raw, defaultValue, originalCommand
 
     case 'task': {
       routeTaskCommand({ args, cwd, raw });
+      break;
+    }
+
+    case 'ndd': {
+      routeNddCommand({ args, cwd, raw, error });
       break;
     }
 

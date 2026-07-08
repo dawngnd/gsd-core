@@ -14,6 +14,77 @@ const path = require('path');
 const { runGsdTools, createTempProject, createTempDir, cleanup } = require('./helpers.cjs');
 const fc = require('./helpers/fast-check-setup.cjs');
 
+describe('NDD command namespace source files', () => {
+  test('contains the seven Phase 1 NDD command wrappers', () => {
+    const dir = path.join(__dirname, '..', 'commands', 'ndd');
+    const files = fs.readdirSync(dir).filter((name) => name.endsWith('.md')).sort();
+    assert.deepStrictEqual(files, [
+      'change.md',
+      'discuss-phase.md',
+      'execute-phase.md',
+      'impact.md',
+      'plan-phase.md',
+      'ship.md',
+      'verify-work.md',
+    ]);
+
+    for (const file of files) {
+      const content = fs.readFileSync(path.join(dir, file), 'utf8');
+      assert.match(content, /^name: ndd:/m, `${file} must declare an ndd: command name`);
+      assert.match(content, /NDD/, `${file} must identify the NDD namespace`);
+      assert.match(content, /GSD/, `${file} must reference GSD reuse`);
+    }
+  });
+});
+
+describe('NDD change command', () => {
+  let tmpDir;
+  let sourceDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject('gsd-ndd-change-cli-');
+    sourceDir = path.join(tmpDir, 'change-docs');
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sourceDir, 'proposal.md'),
+      [
+        '# Proposal',
+        '',
+        'Checkout must support saved cards.',
+        'Maybe invoice migration is pending confirmation.',
+      ].join('\n')
+    );
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('creates intake artifacts through gsd-tools ndd change', () => {
+    const result = runGsdTools(['ndd', 'change', sourceDir, 'billing-flow'], tmpDir);
+    assert.equal(result.success, true, result.error);
+
+    const payload = JSON.parse(result.output);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.change_id, 'billing-flow');
+    assert.equal(payload.source_count, 1);
+    assert.equal(payload.status_path, '.planning/ndd/changes/billing-flow/STATUS.json');
+    assert.equal(payload.source_manifest, '.planning/ndd/changes/billing-flow/SOURCE-MANIFEST.md');
+    assert.equal(payload.change_spec, '.planning/ndd/changes/billing-flow/CHANGE-SPEC.md');
+
+    const workspace = path.join(tmpDir, '.planning', 'ndd', 'changes', 'billing-flow');
+    assert.equal(fs.existsSync(path.join(workspace, 'STATUS.json')), true);
+    assert.equal(fs.existsSync(path.join(workspace, 'SOURCE-MANIFEST.md')), true);
+    assert.equal(fs.existsSync(path.join(workspace, 'CHANGE-SPEC.md')), true);
+    assert.equal(fs.existsSync(path.join(workspace, 'sources', 'proposal.md')), true);
+
+    const spec = fs.readFileSync(path.join(workspace, 'CHANGE-SPEC.md'), 'utf8');
+    assert.match(spec, /Approval: unapproved/);
+    assert.match(spec, /Checkout must support saved cards\. \[source: proposal\.md\]/);
+    assert.match(spec, /Maybe invoice migration is pending confirmation\. \[source: proposal\.md\]/);
+  });
+});
+
 describe('history-digest command', () => {
   let tmpDir;
 
