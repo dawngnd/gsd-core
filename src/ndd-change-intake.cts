@@ -136,8 +136,29 @@ export interface IngestMarkdownSourcesResult extends InitializeChangeWorkspaceRe
   source_folder: string;
   sources_dir: string;
   manifest_path: string;
+  change_spec_path: string;
   sources: IngestedSource[];
   warnings: string[];
+}
+
+interface SourceClaim {
+  text: string;
+  source: string;
+  role: SourceRole;
+}
+
+interface ModalClaim extends SourceClaim {
+  polarity: 'required' | 'optional' | 'prohibited';
+  keywords: Set<string>;
+}
+
+interface DraftChangeSpec {
+  requirements: SourceClaim[];
+  constraints: SourceClaim[];
+  notes: SourceClaim[];
+  ambiguities: SourceClaim[];
+  conflicts: SourceClaim[];
+  openQuestions: SourceClaim[];
 }
 
 function validationFailure(code: ChangeIdValidationErrorCode, message: string): ChangeIdValidationFailure {
@@ -165,6 +186,13 @@ function markdownTableCell(value: string): string {
   return value
     .replace(/\r?\n/g, '<br>')
     .replace(/\|/g, '\\|')
+    .trim();
+}
+
+function markdownBulletText(value: string): string {
+  return value
+    .replace(/\r?\n/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -434,6 +462,227 @@ function renderSourceManifest(changeId: string, sourceFolder: string, sources: I
   return lines.join('\n');
 }
 
+function stripFrontmatterForSpec(content: string): string {
+  if (!content.startsWith('---\n') && !content.startsWith('---\r\n')) return content;
+  const closing = content.indexOf('\n---', 4);
+  if (closing === -1) return content;
+  const afterClosing = content.indexOf('\n', closing + 1);
+  return afterClosing === -1 ? '' : content.slice(afterClosing + 1);
+}
+
+function candidateStatements(content: string): string[] {
+  const body = stripFrontmatterForSpec(content)
+    .split(/\r?\n/)
+    .map(line => line.replace(/^#{1,6}\s+/, '').replace(/^\s*[-*+]\s+/, '').replace(/^\s*\d+[.)]\s+/, '').trim())
+    .filter(line => line.length > 0 && !/^[-|:]+$/.test(line));
+  const statements: string[] = [];
+  for (const line of body) {
+    for (const part of line.split(/(?<=[.?!])\s+/)) {
+      const trimmed = part.trim();
+      if (trimmed.length >= 8) statements.push(trimmed);
+    }
+  }
+  return statements;
+}
+
+function isUncertain(text: string): boolean {
+  return /\b(tbd|to be decided|to be confirmed|unclear|maybe|possibly|optional|confirm|confirmation|pending|unknown|open question|needs discussion|needs clarification)\b/i.test(text);
+}
+
+function isOpenQuestion(text: string): boolean {
+  return /\?$/.test(text.trim()) || /\b(question|confirm|confirmation|pending|needs clarification)\b/i.test(text);
+}
+
+function isRequirement(text: string): boolean {
+  return /\b(must|shall|required|requires|requirement|need(?:s|ed)?|should|will|acceptance criteria|given|when|then|support|allow|create|update|send|return|validate|reject)\b/i.test(text);
+}
+
+function isConstraint(text: string): boolean {
+  return /\b(constraint|non-functional|performance|latency|security|privacy|compliance|audit|rate limit|accessibility|availability|must not|should not|cannot|can't|forbidden)\b/i.test(text);
+}
+
+function isApiDataBusinessNote(text: string, role: SourceRole): boolean {
+  return role === 'api-doc' ||
+    role === 'business-doc' ||
+    /\b(api|endpoint|request|response|payload|schema|field|database|data|workflow|business|policy|rule)\b/i.test(text);
+}
+
+function sourceClaim(text: string, source: IngestedSource): SourceClaim {
+  return { text: markdownBulletText(text), source: source.original_path, role: source.role };
+}
+
+function claimKey(claim: SourceClaim): string {
+  return `${claim.source}\0${claim.text.toLowerCase()}`;
+}
+
+function pushUnique(target: SourceClaim[], claim: SourceClaim): void {
+  const key = claimKey(claim);
+  if (!target.some(existing => claimKey(existing) === key)) target.push(claim);
+}
+
+const MODAL_STOPWORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'be', 'to', 'for', 'and', 'or', 'of', 'in', 'on', 'with',
+  'must', 'shall', 'should', 'required', 'requires', 'require', 'optional', 'may', 'not',
+  'support', 'supports', 'need', 'needs', 'needed', 'can', 'cannot', 'cant', 'do', 'does',
+]);
+
+function modalClaim(statement: string, source: IngestedSource): ModalClaim | null {
+  const lower = statement.toLowerCase();
+  let polarity: ModalClaim['polarity'] | null = null;
+  if (/\b(must not|should not|cannot|can't|do not|does not|forbidden|prohibited|not allowed)\b/.test(lower)) {
+    polarity = 'prohibited';
+  } else if (/\b(optional|may|nice to have|not required)\b/.test(lower)) {
+    polarity = 'optional';
+  } else if (/\b(must|shall|required|requires|require|needs|need to|should)\b/.test(lower)) {
+    polarity = 'required';
+  }
+  if (!polarity) return null;
+  const keywords = new Set(
+    lower
+      .replace(/[^a-z0-9\s-]/g, ' ')
+      .split(/\s+/)
+      .map(word => word.replace(/^-+|-+$/g, ''))
+      .filter(word => word.length >= 3 && !MODAL_STOPWORDS.has(word))
+  );
+  if (keywords.size === 0) return null;
+  return { ...sourceClaim(statement, source), polarity, keywords };
+}
+
+function modalClaimsConflict(a: ModalClaim, b: ModalClaim): boolean {
+  if (a.source === b.source && a.text === b.text) return false;
+  if (a.polarity === b.polarity) return false;
+  const overlap = [...a.keywords].filter(keyword => b.keywords.has(keyword));
+  return overlap.length >= 2 || (overlap.length === 1 && Math.min(a.keywords.size, b.keywords.size) <= 3);
+}
+
+function renderClaimList(items: SourceClaim[], emptyText: string): string[] {
+  if (items.length === 0) return [`- ${emptyText}`];
+  return items.map(item => `- ${item.text} [source: ${item.source}]`);
+}
+
+function extractDraftChangeSpec(sources: IngestedSource[]): DraftChangeSpec {
+  const spec: DraftChangeSpec = {
+    requirements: [],
+    constraints: [],
+    notes: [],
+    ambiguities: [],
+    conflicts: [],
+    openQuestions: [],
+  };
+  const modalClaims: ModalClaim[] = [];
+
+  for (const source of sources) {
+    const content = fs.readFileSync(source.absolute_copied_path, 'utf-8');
+    for (const statement of candidateStatements(content)) {
+      const claim = sourceClaim(statement, source);
+      const modal = modalClaim(statement, source);
+      if (modal) modalClaims.push(modal);
+
+      if (isUncertain(statement)) {
+        pushUnique(isOpenQuestion(statement) ? spec.openQuestions : spec.ambiguities, claim);
+        continue;
+      }
+      if (isOpenQuestion(statement)) {
+        pushUnique(spec.openQuestions, claim);
+        continue;
+      }
+      if (isConstraint(statement)) {
+        pushUnique(spec.constraints, claim);
+      }
+      if (isRequirement(statement)) {
+        pushUnique(spec.requirements, claim);
+      } else if (isApiDataBusinessNote(statement, source.role)) {
+        pushUnique(spec.notes, claim);
+      }
+    }
+  }
+
+  for (let i = 0; i < modalClaims.length; i++) {
+    for (let j = i + 1; j < modalClaims.length; j++) {
+      const first = modalClaims[i];
+      const second = modalClaims[j];
+      if (!modalClaimsConflict(first, second)) continue;
+      pushUnique(spec.conflicts, {
+        text: `${first.text} [source: ${first.source}] conflicts with "${second.text}"`,
+        source: second.source,
+        role: second.role,
+      });
+    }
+  }
+
+  return spec;
+}
+
+function renderChangeSpec(changeId: string, sourceFolder: string, sources: IngestedSource[], warnings: string[]): string {
+  const spec = extractDraftChangeSpec(sources);
+  const lines = [
+    `# Change Spec: ${changeId}`,
+    '',
+    '## Change Metadata',
+    '',
+    `- Change ID: ${changeId}`,
+    `- Source folder: \`${sourceFolder}\``,
+    `- Source count: ${sources.length}`,
+    '',
+    '## Draft / Approval Status',
+    '',
+    '- Status: draft',
+    '- Approval: unapproved',
+    '- Note: Phase 2 only drafts the intake contract. Clarification, approval, impact discovery, and planning bridge are handled by later NDD phases.',
+    '',
+    '## Goal / Requested Change',
+    '',
+    ...renderClaimList(spec.notes.slice(0, 8), 'No source-backed goal statement was confidently extracted.'),
+    '',
+    '## Confirmed Source-Backed Requirements',
+    '',
+    ...renderClaimList(spec.requirements, 'No confirmed requirements were confidently extracted.'),
+    '',
+    '## Constraints / Non-Functional Notes',
+    '',
+    ...renderClaimList(spec.constraints, 'No constraints or non-functional notes were confidently extracted.'),
+    '',
+    '## API / Data / Business Notes',
+    '',
+    ...renderClaimList(spec.notes, 'No API, data, or business notes were confidently extracted.'),
+    '',
+    '## Ambiguities',
+    '',
+    ...renderClaimList(spec.ambiguities, 'No ambiguities detected.'),
+    '',
+    '## Conflicts',
+    '',
+    ...renderClaimList(spec.conflicts, 'No obvious conflicts detected.'),
+    '',
+    '## Open Questions',
+    '',
+    ...renderClaimList(spec.openQuestions, 'No open questions detected.'),
+    '',
+    '## Source References',
+    '',
+    '| Source file | Workspace copy | Inferred role | Evidence |',
+    '| --- | --- | --- | --- |',
+  ];
+
+  for (const source of sources) {
+    lines.push(`| ${[
+      `\`${markdownTableCell(source.original_path)}\``,
+      `\`${markdownTableCell(source.copied_path)}\``,
+      markdownTableCell(source.role),
+      markdownTableCell(source.evidence || ''),
+    ].join(' | ')} |`);
+  }
+
+  lines.push('', '## Intake Warnings', '');
+  if (warnings.length === 0) {
+    lines.push('None.');
+  } else {
+    for (const warning of warnings) lines.push(`- ${warning}`);
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
 export function ingestMarkdownSources(opts: IngestMarkdownSourcesOptions): IngestMarkdownSourcesResult {
   if (!opts.sourceFolder || typeof opts.sourceFolder !== 'string') {
     throw new Error('Source folder is required for NDD change intake.');
@@ -465,6 +714,8 @@ export function ingestMarkdownSources(opts: IngestMarkdownSourcesOptions): Inges
   const warnings = duplicateBasenameWarnings(sources);
   const manifestPath = path.join(workspace.workspace_dir, 'SOURCE-MANIFEST.md');
   platformWriteSync(manifestPath, renderSourceManifest(workspace.change_id, sourceRoot, sources, warnings));
+  const changeSpecPath = path.join(workspace.workspace_dir, 'CHANGE-SPEC.md');
+  platformWriteSync(changeSpecPath, renderChangeSpec(workspace.change_id, sourceRoot, sources, warnings));
 
   const updatedStatus = statusWithDefaults(readExistingStatus(workspace.status_path), {
     projectRoot: opts.projectRoot,
@@ -484,6 +735,7 @@ export function ingestMarkdownSources(opts: IngestMarkdownSourcesOptions): Inges
     source_folder: sourceRoot,
     sources_dir: sourcesDir,
     manifest_path: manifestPath,
+    change_spec_path: changeSpecPath,
     sources,
     warnings,
   };

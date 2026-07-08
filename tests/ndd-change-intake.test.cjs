@@ -245,4 +245,92 @@ describe('NDD change intake helpers', () => {
     assert.equal(status.artifacts.source_manifest, 'SOURCE-MANIFEST.md');
     assert.equal(status.updated_at, '2026-07-08T03:00:00.000Z');
   });
+
+  test('writes draft CHANGE-SPEC.md with source-backed sections and status artifact', () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Proposal.md'),
+      [
+        '# Proposal',
+        '',
+        'The checkout flow must support saved cards.',
+        'The API returns a payment_status field.',
+      ].join('\n')
+    );
+    fs.writeFileSync(
+      path.join(sourceDir, 'api', 'Contract.MD'),
+      [
+        '# API Contract',
+        '',
+        'POST /checkout must validate currency.',
+        'Latency constraint: response should complete within 500ms.',
+      ].join('\n')
+    );
+
+    const result = intake.ingestMarkdownSources({
+      projectRoot: tmpDir,
+      changeId: 'billing-flow',
+      sourceFolder: sourceDir,
+      now: '2026-07-08T04:00:00.000Z',
+    });
+
+    assert.equal(path.basename(result.change_spec_path), 'CHANGE-SPEC.md');
+    const spec = fs.readFileSync(result.change_spec_path, 'utf-8');
+    assert.match(spec, /# Change Spec: billing-flow/);
+    assert.match(spec, /## Draft \/ Approval Status/);
+    assert.match(spec, /Status: draft/);
+    assert.match(spec, /Approval: unapproved/);
+    assert.match(spec, /## Confirmed Source-Backed Requirements/);
+    assert.match(spec, /checkout flow must support saved cards\. \[source: Proposal\.md\]/);
+    assert.match(spec, /POST \/checkout must validate currency\. \[source: api\/Contract\.MD\]/);
+    assert.match(spec, /## Constraints \/ Non-Functional Notes/);
+    assert.match(spec, /Latency constraint: response should complete within 500ms\. \[source: api\/Contract\.MD\]/);
+    assert.match(spec, /## API \/ Data \/ Business Notes/);
+    assert.match(spec, /## Source References/);
+    assert.match(spec, /`Proposal\.md`/);
+    assert.match(spec, /`api\/Contract\.MD`/);
+
+    const status = JSON.parse(fs.readFileSync(result.status_path, 'utf-8'));
+    assert.equal(status.artifacts.change_spec, 'CHANGE-SPEC.md');
+  });
+
+  test('preserves uncertain source text and obvious conflicts in CHANGE-SPEC.md', () => {
+    fs.writeFileSync(
+      path.join(sourceDir, 'Proposal.md'),
+      [
+        '# Proposal',
+        '',
+        'Checkout must require manager approval.',
+        'Maybe refunds should be optional pending finance confirmation.',
+        'Confirm whether legacy invoices stay enabled?',
+      ].join('\n')
+    );
+    fs.writeFileSync(
+      path.join(sourceDir, 'api', 'Contract.MD'),
+      [
+        '# API Contract',
+        '',
+        'Manager approval is optional for checkout.',
+        'The API must return invoice_id.',
+      ].join('\n')
+    );
+
+    const result = intake.ingestMarkdownSources({
+      projectRoot: tmpDir,
+      changeId: 'billing-flow',
+      sourceFolder: sourceDir,
+      now: '2026-07-08T05:00:00.000Z',
+    });
+
+    const spec = fs.readFileSync(result.change_spec_path, 'utf-8');
+    assert.match(spec, /## Ambiguities/);
+    assert.match(spec, /## Open Questions/);
+    assert.match(spec, /Maybe refunds should be optional pending finance confirmation\. \[source: Proposal\.md\]/);
+    assert.match(spec, /Confirm whether legacy invoices stay enabled\? \[source: Proposal\.md\]/);
+    assert.match(spec, /## Conflicts/);
+    assert.match(
+      spec,
+      /Manager approval is optional for checkout\. \[source: api\/Contract\.MD\] conflicts with "Checkout must require manager approval\." \[source: Proposal\.md\]/
+    );
+    assert.doesNotMatch(spec, /Maybe refunds should be optional pending finance confirmation\. \[source: Proposal\.md\]\n- The API must return invoice_id/);
+  });
 });
