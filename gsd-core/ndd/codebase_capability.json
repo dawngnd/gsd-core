@@ -1,0 +1,43 @@
+{
+  "tools": {
+    "codegraph": {
+      "available": false,
+      "config": {},
+      "capabilities": {
+        "callers": true,
+        "callees": true,
+        "impact_analysis": true,
+        "symbol_lookup": true,
+        "semantic": false,
+        "knowledge": false
+      }
+    },
+    "grep_search": {
+      "available": true,
+      "config": {},
+      "capabilities": {
+        "callers": false,
+        "callees": false,
+        "impact_analysis": false,
+        "symbol_lookup": false,
+        "semantic": true,
+        "knowledge": false
+      }
+    },
+    "wiki": {
+      "available": false,
+      "config": {
+        "wiki_path": "",
+        "query_tool": ""
+      },
+      "capabilities": {
+        "callers": false,
+        "callees": false,
+        "impact_analysis": false,
+        "symbol_lookup": false,
+        "semantic": true,
+        "knowledge": true
+      }
+    }
+  }
+}
