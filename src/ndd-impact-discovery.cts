@@ -84,6 +84,9 @@ export type ImpactDiscoveryResult =
       impact_path: string;
       relative_impact_path: string;
       change_id: string;
+      codebase_map_available: boolean;
+      codebase_map_files: string[];
+      capability_config: CodebaseCapabilityConfig;
       summary: { confirmed: number; likely: number; unknown: number };
     }
   | {
@@ -292,4 +295,106 @@ export function renderImpactMarkdown(data: ImpactAnalysisData): string {
   lines.push('');
 
   return lines.join('\n');
+}
+
+// ─── Orchestrator ─────────────────────────────────────────────────────────────
+
+export function runImpactDiscovery(opts: { projectRoot: string; changeId: string }): ImpactDiscoveryResult {
+  // 1. Validate change-id
+  const validation = validateChangeId(opts.changeId);
+  if (!validation.valid) {
+    return { ok: false, error: { code: 'invalid_change_id', message: validation.message } };
+  }
+
+  // 2. Resolve workspace
+  const resolved = resolveChangeWorkspace(opts.projectRoot, opts.changeId);
+  if (!resolved.ok) {
+    return { ok: false, error: { code: 'workspace_resolution_failed', message: resolved.error.message } };
+  }
+
+  const workspaceDir = resolved.workspace_dir;
+
+  // 3. Check workspace exists and contains STATUS.json
+  const statusPath = path.join(workspaceDir, 'STATUS.json');
+  if (!fs.existsSync(workspaceDir) || !fs.existsSync(statusPath)) {
+    return { ok: false, error: { code: 'workspace_not_found', message: 'Change workspace not found. Run ndd-change first.' } };
+  }
+
+  // 4. Read STATUS.json
+  let status: Record<string, unknown>;
+  try {
+    const raw = fs.readFileSync(statusPath, 'utf-8');
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { ok: false, error: { code: 'invalid_status', message: 'STATUS.json is not a valid object.' } };
+    }
+    status = parsed as Record<string, unknown>;
+  } catch {
+    return { ok: false, error: { code: 'invalid_status', message: 'STATUS.json is unparseable.' } };
+  }
+
+  if (!status['phase'] || typeof status['phase'] !== 'string') {
+    return { ok: false, error: { code: 'invalid_status', message: 'STATUS.json missing phase field.' } };
+  }
+
+  // 5. Check codebase map
+  const mapResult = checkCodebaseMapAvailability(opts.projectRoot);
+
+  // 6. Load capability config
+  const capConfig = loadCodebaseCapabilityConfig(opts.projectRoot);
+
+  // 7. Read CHANGE-SPEC.md and extract requirement sections
+  const changeSpecPath = path.join(workspaceDir, 'CHANGE-SPEC.md');
+  let requirementSections: Array<{ id: string; title: string }> = [];
+  try {
+    const specContent = fs.readFileSync(changeSpecPath, 'utf-8');
+    requirementSections = extractRequirementSections(specContent);
+  } catch {
+    // CHANGE-SPEC.md may not exist yet — proceed with empty requirements
+  }
+
+  // 8. Build initial IMPACT.md scaffold
+  const groups: RequirementImpactGroup[] = requirementSections.map(req => ({
+    requirement_id: req.id,
+    requirement_title: req.title,
+    entries: [],
+  }));
+
+  const renderedMarkdown = renderImpactMarkdown({
+    change_id: opts.changeId,
+    tools_used: [],
+    groups,
+    cross_cutting: [],
+  });
+
+  // 9. Write IMPACT.md
+  const impactPath = path.join(workspaceDir, 'IMPACT.md');
+  platformWriteSync(impactPath, renderedMarkdown);
+
+  // 10. Update STATUS.json — preserve ALL existing fields
+  const artifacts = (status['artifacts'] && typeof status['artifacts'] === 'object' && !Array.isArray(status['artifacts']))
+    ? { ...(status['artifacts'] as Record<string, string>) }
+    : {} as Record<string, string>;
+  artifacts['impact'] = 'IMPACT.md';
+
+  const updatedStatus = {
+    ...status,
+    phase: 'impact',
+    artifacts,
+    updated_at: new Date().toISOString(),
+  };
+  platformWriteSync(statusPath, JSON.stringify(updatedStatus, null, 2) + '\n');
+
+  // 11. Return success
+  const relativeImpactPath = path.join(resolved.relative_workspace_dir, 'IMPACT.md').split(path.sep).join('/');
+  return {
+    ok: true,
+    change_id: opts.changeId,
+    impact_path: impactPath,
+    relative_impact_path: relativeImpactPath,
+    codebase_map_available: mapResult.available,
+    codebase_map_files: mapResult.files,
+    capability_config: capConfig,
+    summary: { confirmed: 0, likely: 0, unknown: 0 },
+  };
 }
