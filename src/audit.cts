@@ -116,10 +116,10 @@ interface AuditResult {
   };
 }
 
-// Terminal UAT states: `complete` (legacy) and `resolved` (post-gap-closure
+// Terminal UAT states: `complete` (legacy), `passed` (current UAT output), and `resolved` (post-gap-closure
 // per workflows/execute-phase.md). Hoisted outside scanUatGaps so the Set is
 // not recreated on each loop iteration.
-const TERMINAL_UAT_STATUSES = new Set(['complete', 'resolved']);
+const TERMINAL_UAT_STATUSES = new Set(['complete', 'passed', 'resolved']);
 
 // ─── scanDebugSessions ────────────────────────────────────────────────────────
 

@@ -115,6 +115,31 @@ describe('bug #2836: audit-open quick-task summary filename + UAT terminal statu
     }
   });
 
+  test('UAT with status: passed is treated as terminal (not an open gap)', () => {
+    const cwd = mkTmp();
+    try {
+      const phaseDir = path.join(cwd, '.planning', 'phases', '04-test');
+      fs.mkdirSync(phaseDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(phaseDir, '04-UAT.md'),
+        '---\nstatus: passed\n---\n## Summary\n\npending: 0\n',
+        'utf-8'
+      );
+
+      const result = auditOpenArtifacts(cwd);
+      const realUatGaps = result.items.uat_gaps.filter(i => !i.scan_error);
+
+      assert.equal(
+        realUatGaps.length,
+        0,
+        `UAT with status: passed must not appear as an open gap; got: ${JSON.stringify(realUatGaps)}`
+      );
+      assert.equal(result.counts.uat_gaps, 0);
+    } finally {
+      cleanup(cwd);
+    }
+  });
+
   test('UAT with status: pending is still flagged as an open gap', () => {
     const cwd = mkTmp();
     try {
