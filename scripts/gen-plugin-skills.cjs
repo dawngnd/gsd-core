@@ -2,8 +2,8 @@
 'use strict';
 
 /**
- * gen-plugin-skills.cjs — generates skills/gsd-<stem>/SKILL.md from
- * commands/gsd/*.md using convertClaudeCommandToClaudeSkill.
+ * gen-plugin-skills.cjs — generates skills/<prefix><stem>/SKILL.md from
+ * configured command namespaces using convertClaudeCommandToClaudeSkill.
  *
  * Usage:
  *   node scripts/gen-plugin-skills.cjs              # print summary to stdout
@@ -27,22 +27,27 @@ const path = require('node:path');
 const { ExitError, runMain } = require('./lib/cli-exit.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
-const COMMANDS_DIR = path.join(ROOT, 'commands', 'gsd');
 const SKILLS_DIR = path.join(ROOT, 'skills');
 const CONVERSION_MODULE = path.join(ROOT, 'gsd-core', 'bin', 'lib', 'runtime-artifact-conversion.cjs');
-const PREFIX = 'gsd-';
 const RUNTIME = 'claude';
+const COMMAND_NAMESPACES = Object.freeze([
+  { commandsDir: path.join(ROOT, 'commands', 'gsd'), prefix: 'gsd-' },
+  { commandsDir: path.join(ROOT, 'commands', 'ndd'), prefix: 'ndd-' },
+]);
 
 function generateSkills(conversion) {
   const cmdNames = conversion.readGsdCommandNames();
-  const files = fs.readdirSync(COMMANDS_DIR).filter(f => f.endsWith('.md'));
   const results = [];
-  for (const file of files) {
-    const stem = file.slice(0, -3);
-    const skillName = PREFIX + stem;
-    const src = fs.readFileSync(path.join(COMMANDS_DIR, file), 'utf8');
-    const converted = conversion.convertClaudeCommandToClaudeSkill(src, skillName, RUNTIME, cmdNames, true);
-    results.push({ skillName, content: converted });
+  for (const namespace of COMMAND_NAMESPACES) {
+    if (!fs.existsSync(namespace.commandsDir)) continue;
+    const files = fs.readdirSync(namespace.commandsDir).filter(f => f.endsWith('.md'));
+    for (const file of files) {
+      const stem = file.slice(0, -3);
+      const skillName = namespace.prefix + stem;
+      const src = fs.readFileSync(path.join(namespace.commandsDir, file), 'utf8');
+      const converted = conversion.convertClaudeCommandToClaudeSkill(src, skillName, RUNTIME, cmdNames, true);
+      results.push({ skillName, content: converted });
+    }
   }
   return results;
 }
@@ -63,8 +68,12 @@ function main() {
   const results = generateSkills(conversion);
 
   if (WRITE) {
-    fs.rmSync(SKILLS_DIR, { recursive: true, force: true });
     fs.mkdirSync(SKILLS_DIR, { recursive: true });
+    for (const entry of fs.readdirSync(SKILLS_DIR, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (!COMMAND_NAMESPACES.some(namespace => entry.name.startsWith(namespace.prefix))) continue;
+      fs.rmSync(path.join(SKILLS_DIR, entry.name), { recursive: true, force: true });
+    }
     for (const { skillName, content } of results) {
       const skillDir = path.join(SKILLS_DIR, skillName);
       fs.mkdirSync(skillDir, { recursive: true });
@@ -93,7 +102,7 @@ function main() {
       }
     }
     const existingDirs = fs.readdirSync(SKILLS_DIR, { withFileTypes: true })
-      .filter(e => e.isDirectory() && e.name.startsWith(PREFIX));
+      .filter(e => e.isDirectory() && COMMAND_NAMESPACES.some(namespace => e.name.startsWith(namespace.prefix)));
     for (const dir of existingDirs) {
       if (!expectedNames.has(dir.name)) {
         process.stderr.write(`gen-plugin-skills: stale (no source) ${path.relative(ROOT, path.join(SKILLS_DIR, dir.name))}\n`);

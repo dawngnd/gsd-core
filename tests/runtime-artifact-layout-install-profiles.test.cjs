@@ -165,6 +165,20 @@ describe('stageSkillsForRuntimeAsSkills', () => {
       assert.strictEqual(content, `# ${name}\n`);
     }
   });
+
+  test('NDD command namespace stages to ndd-<stem>/SKILL.md', (t) => {
+    const src = path.join(__dirname, '..', 'commands', 'ndd');
+    let stagedDir;
+    t.after(() => {
+      if (stagedDir) cleanupStagedSkills();
+    });
+    const converter = (content, skillName) => `name: ${skillName}\n\n${content}`;
+    stagedDir = stageSkillsForRuntimeAsSkills(src, { skills: '*' }, converter, 'ndd-');
+    assert.ok(fs.existsSync(path.join(stagedDir, 'ndd-change', 'SKILL.md')));
+    const content = fs.readFileSync(path.join(stagedDir, 'ndd-change', 'SKILL.md'), 'utf8');
+    assert.match(content, /^name: ndd-change$/m);
+    assert.match(content, /name: ndd:change/);
+  });
 });
 
 // ─── stageSkillsForProfile ───────────────────────────────────────────────────

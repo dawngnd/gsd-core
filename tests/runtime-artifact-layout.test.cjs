@@ -109,7 +109,26 @@ describe('resolveRuntimeArtifactLayout — codex', () => {
     assert.strictEqual(layout.kinds[0].kind, 'skills');
     assert.strictEqual(layout.kinds[0].destSubpath, 'skills');
     assert.strictEqual(layout.kinds[0].prefix, 'gsd-');
+    assert.strictEqual(layout.kinds[0].sourceNamespace, 'gsd');
     assert.strictEqual(typeof layout.kinds[0].stage, 'function');
+  });
+
+  test('returns local GSD and NDD skill layouts for codex', () => {
+    const layout = resolveRuntimeArtifactLayout('codex', FAKE_DIR, 'local');
+    assert.strictEqual(layout.runtime, 'codex');
+    assert.strictEqual(layout.configDir, FAKE_DIR);
+    assert.strictEqual(layout.kinds.length, 2);
+
+    const gsdKind = layout.kinds.find(k => k.kind === 'skills' && k.prefix === 'gsd-');
+    assert.ok(gsdKind, 'codex local must keep the gsd- skills kind');
+    assert.strictEqual(gsdKind.destSubpath, 'skills');
+    assert.strictEqual(gsdKind.sourceNamespace, 'gsd');
+
+    const nddKind = layout.kinds.find(k => k.kind === 'skills' && k.prefix === 'ndd-');
+    assert.ok(nddKind, 'codex local must add the ndd- skills kind');
+    assert.strictEqual(nddKind.destSubpath, 'skills');
+    assert.strictEqual(nddKind.sourceNamespace, 'ndd');
+    assert.strictEqual(typeof nddKind.stage, 'function');
   });
 });
 
@@ -135,7 +154,26 @@ describe('resolveRuntimeArtifactLayout — antigravity', () => {
     assert.strictEqual(layout.kinds[0].kind, 'skills');
     assert.strictEqual(layout.kinds[0].destSubpath, 'skills');
     assert.strictEqual(layout.kinds[0].prefix, 'gsd-');
+    assert.strictEqual(layout.kinds[0].sourceNamespace, 'gsd');
     assert.strictEqual(typeof layout.kinds[0].stage, 'function');
+  });
+
+  test('returns local GSD and NDD skill layouts for antigravity', () => {
+    const layout = resolveRuntimeArtifactLayout('antigravity', FAKE_DIR, 'local');
+    assert.strictEqual(layout.runtime, 'antigravity');
+    assert.strictEqual(layout.configDir, FAKE_DIR);
+    assert.strictEqual(layout.kinds.length, 2);
+
+    const gsdKind = layout.kinds.find(k => k.kind === 'skills' && k.prefix === 'gsd-');
+    assert.ok(gsdKind, 'antigravity local must keep the gsd- skills kind');
+    assert.strictEqual(gsdKind.destSubpath, 'skills');
+    assert.strictEqual(gsdKind.sourceNamespace, 'gsd');
+
+    const nddKind = layout.kinds.find(k => k.kind === 'skills' && k.prefix === 'ndd-');
+    assert.ok(nddKind, 'antigravity local must add the ndd- skills kind');
+    assert.strictEqual(nddKind.destSubpath, 'skills');
+    assert.strictEqual(nddKind.sourceNamespace, 'ndd');
+    assert.strictEqual(typeof nddKind.stage, 'function');
   });
 });
 

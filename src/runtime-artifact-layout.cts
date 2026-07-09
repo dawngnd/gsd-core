@@ -70,6 +70,7 @@ interface ArtifactKind {
   kind: KimiArtifactKindName;
   destSubpath: string;
   prefix: string;
+  sourceNamespace?: string;
   /** For agents kind with a converter, accepts an optional AgentCtx as the second
    *  arg so cross-cutting can be applied pre-converter (ADR-1235 §1). */
   stage: (resolvedProfile: ResolvedProfile, agentCtx?: AgentCtx) => string;
@@ -87,21 +88,26 @@ interface Layout {
 // ---------------------------------------------------------------------------
 
 /**
- * Locate the GSD commands/gsd source directory.
+ * Locate a commands/<namespace> source directory.
  *
  * Resolution order:
  * 1. If runtimeConfigDir provided, check <runtimeConfigDir>/.gsd-source marker.
  * 2. Walk up from __dirname using path.dirname (no literal .. segments).
  * 3. Throw a descriptive error if neither succeeds.
  */
-function findInstallSourceRoot(runtimeConfigDir?: string): string {
+function findInstallSourceRoot(runtimeConfigDir?: string, sourceNamespace = 'gsd'): string {
+  const namespace = sourceNamespace || 'gsd';
   // Step 1: marker check
   if (runtimeConfigDir) {
     const markerPath = path.join(runtimeConfigDir, '.gsd-source');
     if (fs.existsSync(markerPath)) {
       try {
         const src = fs.readFileSync(markerPath, 'utf8').trim();
-        if (src && fs.existsSync(src)) return src;
+        if (src && fs.existsSync(src)) {
+          if (namespace === 'gsd') return src;
+          const sibling = path.join(path.dirname(src), namespace);
+          if (fs.existsSync(sibling)) return sibling;
+        }
       } catch { /* fall through */ }
     }
   }
@@ -109,14 +115,14 @@ function findInstallSourceRoot(runtimeConfigDir?: string): string {
   // Step 2: walk up from __dirname
   let dir = __dirname;
   for (let i = 0; i < 6; i++) {
-    const candidate = path.join(dir, 'commands', 'gsd');
+    const candidate = path.join(dir, 'commands', namespace);
     if (fs.existsSync(candidate)) return candidate;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
 
-  throw new Error(`findInstallSourceRoot: could not locate commands/gsd from ${__dirname}`);
+  throw new Error(`findInstallSourceRoot: could not locate commands/${namespace} from ${__dirname}`);
 }
 
 /**
@@ -160,12 +166,13 @@ function findAgentsSourceRoot(runtimeConfigDir?: string): string {
 // Layout table builders
 // ---------------------------------------------------------------------------
 
-function commandsKind(destSubpath: string, prefix: string, configDir: string): ArtifactKind {
+function commandsKind(destSubpath: string, prefix: string, configDir: string, sourceNamespace = 'gsd'): ArtifactKind {
   return {
     kind: 'commands',
     destSubpath,
     prefix,
-    stage: (resolved) => stageSkillsForProfile(findInstallSourceRoot(configDir), resolved),
+    sourceNamespace,
+    stage: (resolved) => stageSkillsForProfile(findInstallSourceRoot(configDir, sourceNamespace), resolved),
   };
 }
 
@@ -306,11 +313,13 @@ function skillsKind(
   configDir: string,
   nested = false,
   scope: 'local' | 'global' = 'global',
+  sourceNamespace = 'gsd',
 ): ArtifactKind {
   return {
     kind: 'skills',
     destSubpath,
     prefix,
+    sourceNamespace,
     stage: (resolved) => {
       const realConverter = conversionExports[converterName] as (content: string, skillName: string, runtime: string, cmdNames: string[], isGlobal: boolean) => string;
       // Compute cmdNames once per stage call for performance (#3583).
@@ -325,7 +334,7 @@ function skillsKind(
       const isGlobal = scope === 'global';
       const wrappedConverter = (content: string, skillName: string): string =>
         realConverter(content, skillName, runtime, cmdNames, isGlobal);
-      return stageSkillsForRuntimeAsSkills(findInstallSourceRoot(configDir), resolved, wrappedConverter, prefix, nested);
+      return stageSkillsForRuntimeAsSkills(findInstallSourceRoot(configDir, sourceNamespace), resolved, wrappedConverter, prefix, nested);
     },
   };
 }
@@ -351,14 +360,16 @@ function convertedCommandsKind(
   prefix: string,
   converterName: string,
   configDir: string,
+  sourceNamespace = 'gsd',
 ): ArtifactKind {
   return {
     kind: 'commands',
     destSubpath,
     prefix,
+    sourceNamespace,
     stage: (resolved) => {
       const converter = conversionExports[converterName] as (content: string, commandName: string) => string;
-      return stageCommandsForRuntimeFlat(findInstallSourceRoot(configDir), resolved, converter, prefix);
+      return stageCommandsForRuntimeFlat(findInstallSourceRoot(configDir, sourceNamespace), resolved, converter, prefix);
     },
   };
 }
@@ -416,6 +427,7 @@ interface ArtifactKindDescriptor {
   kind: string;
   destSubpath: string;
   prefix: string;
+  sourceNamespace?: string;
   nesting: 'flat' | 'nested';
   recursive: boolean;
   converter: string | null;
@@ -442,15 +454,15 @@ function getRegistry(): RegistryLike {
  * matching builder function. Mirrors the hand-built calls in the old switch.
  */
 function dispatchKindEntry(entry: ArtifactKindDescriptor, runtime: string, configDir: string, scope: 'local' | 'global'): ArtifactKind {
-  const { kind, destSubpath, prefix, nesting, converter } = entry;
+  const { kind, destSubpath, prefix, sourceNamespace = 'gsd', nesting, converter } = entry;
   const nested = nesting === 'nested';
 
   switch (kind) {
     case 'commands':
       if (converter == null) {
-        return commandsKind(destSubpath, prefix, configDir);
+        return commandsKind(destSubpath, prefix, configDir, sourceNamespace);
       }
-      return convertedCommandsKind(destSubpath, prefix, converter, configDir);
+      return convertedCommandsKind(destSubpath, prefix, converter, configDir, sourceNamespace);
 
     case 'agents':
       if (converter == null) {
@@ -464,7 +476,7 @@ function dispatchKindEntry(entry: ArtifactKindDescriptor, runtime: string, confi
           `resolveRuntimeArtifactLayout: skills entry for '${runtime}' has converter=null (converter is required for skills)`,
         );
       }
-      return skillsKind(destSubpath, prefix, converter, runtime, configDir, nested, scope);
+      return skillsKind(destSubpath, prefix, converter, runtime, configDir, nested, scope, sourceNamespace);
 
     case 'kimi-agents':
       return kimiAgentsKind(destSubpath, prefix, configDir);

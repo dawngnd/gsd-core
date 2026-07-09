@@ -45,6 +45,15 @@
           "nesting": "flat",
           "recursive": false,
           "converter": "convertClaudeCommandToAntigravitySkill"
+        },
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "ndd-",
+          "sourceNamespace": "ndd",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeCommandToAntigravitySkill"
         }
       ]
     },

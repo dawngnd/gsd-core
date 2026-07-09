@@ -38,6 +38,15 @@
           "nesting": "flat",
           "recursive": false,
           "converter": "convertClaudeCommandToCodexSkill"
+        },
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "ndd-",
+          "sourceNamespace": "ndd",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeCommandToCodexSkill"
         }
       ]
     },

@@ -77,9 +77,12 @@ function createFixture() {
 function createFixtureWithUserGsdDir() {
   const base = createFixture();
   const userGsdDir = path.join(base.skillsDir, 'gsd-mything');
+  const userNddDir = path.join(base.skillsDir, 'ndd-mything');
   fs.mkdirSync(userGsdDir, { recursive: true });
+  fs.mkdirSync(userNddDir, { recursive: true });
   fs.writeFileSync(path.join(userGsdDir, 'SKILL.md'), '# user skill\n', 'utf8');
-  return { ...base, userGsdDir };
+  fs.writeFileSync(path.join(userNddDir, 'SKILL.md'), '# user ndd skill\n', 'utf8');
+  return { ...base, userGsdDir, userNddDir };
 }
 
 describe('bug-3659: applySurface prunes ~/.claude/skills/gsd-*/ on cluster disable', () => {
@@ -212,7 +215,8 @@ describe('bug-3659: applySurface prunes ~/.claude/skills/gsd-*/ on cluster disab
     //   2. gsd-help/    — GSD-owned, disabled cluster → REMOVED
     //   3. my-custom-skill/ — user-owned, no gsd- prefix → PRESERVED
     //   4. gsd-mything/ — prefix match but NOT in manifest → PRESERVED (Finding 1 fix)
-    const { configDir, gsdExplore, gsdHelp, userSkill, userGsdDir } =
+    //   5. ndd-mything/ — NDD-looking user dir not in manifest → PRESERVED
+    const { configDir, gsdExplore, gsdHelp, userSkill, userGsdDir, userNddDir } =
       createFixtureWithUserGsdDir();
     t.after(() => cleanup(configDir));
 
@@ -252,6 +256,11 @@ describe('bug-3659: applySurface prunes ~/.claude/skills/gsd-*/ on cluster disab
       fs.existsSync(userGsdDir),
       'gsd-mything/ (user-created gsd-* dir not in manifest) must be preserved — ' +
       'prefix match alone must not trigger deletion (Finding 1 data-loss fix)'
+    );
+    assert.ok(
+      fs.existsSync(userNddDir),
+      'ndd-mything/ (user-created ndd-* dir not in manifest) must be preserved — ' +
+      'adding NDD must not broaden cleanup beyond managed manifest entries'
     );
   });
 });

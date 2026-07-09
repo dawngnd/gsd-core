@@ -107,6 +107,15 @@ const capabilities = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToAntigravitySkill"
+          },
+          {
+            "kind": "skills",
+            "destSubpath": "skills",
+            "prefix": "ndd-",
+            "sourceNamespace": "ndd",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeCommandToAntigravitySkill"
           }
         ]
       },
@@ -670,6 +679,15 @@ const capabilities = {
             "kind": "skills",
             "destSubpath": "skills",
             "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeCommandToCodexSkill"
+          },
+          {
+            "kind": "skills",
+            "destSubpath": "skills",
+            "prefix": "ndd-",
+            "sourceNamespace": "ndd",
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCodexSkill"
@@ -3225,6 +3243,15 @@ const runtimes = {
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToAntigravitySkill"
+          },
+          {
+            "kind": "skills",
+            "destSubpath": "skills",
+            "prefix": "ndd-",
+            "sourceNamespace": "ndd",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeCommandToAntigravitySkill"
           }
         ]
       },
@@ -3644,6 +3671,15 @@ const runtimes = {
             "kind": "skills",
             "destSubpath": "skills",
             "prefix": "gsd-",
+            "nesting": "flat",
+            "recursive": false,
+            "converter": "convertClaudeCommandToCodexSkill"
+          },
+          {
+            "kind": "skills",
+            "destSubpath": "skills",
+            "prefix": "ndd-",
+            "sourceNamespace": "ndd",
             "nesting": "flat",
             "recursive": false,
             "converter": "convertClaudeCommandToCodexSkill"

@@ -48,6 +48,7 @@ const {
 const REAL_COMMANDS_DIR = path.join(__dirname, '..', 'commands', 'gsd');
 const MANIFEST = loadSkillsManifest(REAL_COMMANDS_DIR);
 const RESOLVED_CORE = resolveProfile({ modes: ['core'], manifest: MANIFEST });
+const RESOLVED_FULL = resolveProfile({ modes: ['full'], manifest: MANIFEST });
 
 function loadFreshInstallerWithInstallPlanStub(stub) {
   return loadFreshInstallerWithPlanStubs({ installStub: stub });
@@ -273,6 +274,44 @@ describe('installRuntimeArtifacts — gemini commands layout', () => {
     assert.ok(fs.existsSync(path.join(configDir, 'commands', 'gsd')));
     assert.ok(fs.existsSync(path.join(configDir, 'commands', 'gsd', 'help.md')));
     assert.ok(!fs.existsSync(path.join(configDir, 'skills')));
+  });
+});
+
+describe('installRuntimeArtifacts — local NDD namespace skills', () => {
+  test('codex local install writes GSD and NDD skills side by side', (t) => {
+    const projectDir = createTempDir('gsd-ndd-codex-local-');
+    const configDir = path.join(projectDir, '.codex');
+    fs.mkdirSync(configDir, { recursive: true });
+    t.after(() => cleanup(projectDir));
+
+    installRuntimeArtifacts('codex', configDir, 'local', RESOLVED_FULL);
+
+    assert.ok(
+      fs.existsSync(path.join(configDir, 'skills', 'gsd-plan-phase', 'SKILL.md')),
+      'codex local install must still write .codex/skills/gsd-plan-phase/SKILL.md'
+    );
+    assert.ok(
+      fs.existsSync(path.join(configDir, 'skills', 'ndd-change', 'SKILL.md')),
+      'codex local install must write .codex/skills/ndd-change/SKILL.md'
+    );
+  });
+
+  test('antigravity local install writes GSD and NDD skills side by side', (t) => {
+    const projectDir = createTempDir('gsd-ndd-antigravity-local-');
+    const configDir = path.join(projectDir, '.agents');
+    fs.mkdirSync(configDir, { recursive: true });
+    t.after(() => cleanup(projectDir));
+
+    installRuntimeArtifacts('antigravity', configDir, 'local', RESOLVED_FULL);
+
+    assert.ok(
+      fs.existsSync(path.join(configDir, 'skills', 'gsd-plan-phase', 'SKILL.md')),
+      'antigravity local install must still write .agents/skills/gsd-plan-phase/SKILL.md'
+    );
+    assert.ok(
+      fs.existsSync(path.join(configDir, 'skills', 'ndd-change', 'SKILL.md')),
+      'antigravity local install must write .agents/skills/ndd-change/SKILL.md'
+    );
   });
 });
 

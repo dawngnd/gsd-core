@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: NDD Namespace Foundation** - Add the fixed `ndd` command/skill namespace and shared artifact conventions without disturbing GSD commands. (completed 2026-07-08)
 - [x] **Phase 2: Change Intake and Spec Drafting** - Ingest Markdown document folders and create source-traceable NDD change artifacts. (completed 2026-07-08)
 - [x] **Phase 3: Impact Discovery** - Map a change start point to likely affected code areas using codebase maps and source inspection. (completed 2026-07-08)
-- [ ] **Phase 4: Discuss and Approve Change Spec** - Resolve ambiguity/conflicts and approve `CHANGE-SPEC.md` before planning.
+- [x] **Phase 4: Discuss and Approve Change Spec** - Resolve ambiguity/conflicts and approve `CHANGE-SPEC.md` before planning. (completed 2026-07-08)
 - [ ] **Phase 5: Planning Bridge** - Adapt approved NDD changes into GSD planning mechanics.
 - [ ] **Phase 6: Execution Bridge** - Reuse GSD execution/subagent mechanics while preserving NDD traceability.
 - [ ] **Phase 7: Verification, Ship, and Hardening** - Verify against `CHANGE-SPEC.md`, enrich ship output, and cover the NDD workflow with tests.
@@ -123,13 +123,25 @@ Plans:
   3. Critical unresolved ambiguity blocks `ndd-plan-phase`.
   4. User can approve the spec before planning begins.
 
-**Plans**: 3 plans
+**Plans**: 3/3 plans complete
 
 Plans:
 
-- [ ] 04-01: Create NDD discuss workflow and question strategy based on GSD discuss principles.
-- [ ] 04-02: Implement spec update/approval state transitions.
-- [ ] 04-03: Add tests for critical ambiguity blocking and approved spec gating.
+- [x] 04-01-PLAN.md
+- [x] 04-02-PLAN.md
+- [x] 04-03-PLAN.md
+
+**Wave 1**
+
+- [x] 04-01: Create NDD discuss workflow and question strategy based on GSD discuss principles.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 04-02: Implement spec update/approval state transitions.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 04-03: Add tests for critical ambiguity blocking and approved spec gating.
 
 ### Phase 5: Planning Bridge
 
@@ -143,9 +155,13 @@ Plans:
   3. GSD plan-check/source-grounding conventions remain active.
   4. NDD records the produced phase/plan linkage in the change folder.
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
+
+- [x] 05-01-PLAN.md
+- [ ] 05-02-PLAN.md
+- [ ] 05-03-PLAN.md
 
 - [ ] 05-01: Define bridge model from NDD change artifact to GSD phase/planning context.
 - [ ] 05-02: Implement `ndd-plan-phase` wrapper/adaptor workflow.
@@ -199,7 +215,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | 1. NDD Namespace Foundation | 3/3 | Complete    | 2026-07-08 |
 | 2. Change Intake and Spec Drafting | 3/3 | Complete    | 2026-07-08 |
 | 3. Impact Discovery | 3/3 | Complete   | 2026-07-08 |
-| 4. Discuss and Approve Change Spec | 0/3 | Not started | - |
-| 5. Planning Bridge | 0/3 | Not started | - |
+| 4. Discuss and Approve Change Spec | 3/3 | Complete   | 2026-07-08 |
+| 5. Planning Bridge | 1/3 | In Progress|  |
 | 6. Execution Bridge | 0/2 | Not started | - |
 | 7. Verification, Ship, and Hardening | 0/3 | Not started | - |
