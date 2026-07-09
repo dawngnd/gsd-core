@@ -676,6 +676,32 @@ API keys configured via `/gsd-settings` (`brave_search`, `firecrawl`, `exa_searc
 
 ---
 
+## NDD Commands
+
+```bash
+# Verify completed NDD work against change spec acceptance criteria
+node gsd-tools.cjs ndd verify <change-id-or-phase> [--override-criterion <text> --override-reason <reason> --override-person <person>]
+
+# Generate pre-ship context artifact
+node gsd-tools.cjs ndd ship <change-id-or-phase>
+
+# Mark NDD change as successfully shipped
+node gsd-tools.cjs ndd ship-shipped <change-id-or-phase> [--pr-url <url>] [--pr-number <number>]
+
+# Mark NDD change as blocked from shipping with a reason
+node gsd-tools.cjs ndd ship-blocked <change-id-or-phase> <blocker>
+```
+
+**`ndd verify`** resolves the change/phase, checks if GSD verification has passed, parses acceptance criteria from `CHANGE-SPEC.md`, maps criteria to evidence in GSD artifacts, and produces `VERIFICATION.md` under the change folder.
+
+**`ndd ship`** generates `SHIP-CONTEXT.md` under the change folder after gating on NDD verified status and canonical GSD verification passed.
+
+**`ndd ship-shipped`** records the shipped status, timestamp, and optional PR URL/number in the NDD change's `STATUS.json`.
+
+**`ndd ship-blocked`** records the blocked status and reason in the NDD change's `STATUS.json`.
+
+---
+
 ## Related
 
 - [Commands](COMMANDS.md)

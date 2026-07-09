@@ -211,6 +211,11 @@ export default tseslint.config(
       'gsd-core/bin/lib/state-io.cjs',
       'gsd-core/bin/lib/external-descriptor-trust.cjs',
       'gsd-core/bin/lib/mcp-server.cjs',
+      'gsd-core/bin/lib/ndd-change-intake.cjs',
+      'gsd-core/bin/lib/ndd-command-router.cjs',
+      'gsd-core/bin/lib/ndd-discuss-spec.cjs',
+      'gsd-core/bin/lib/ndd-impact-discovery.cjs',
+      'gsd-core/bin/lib/ndd-plan-bridge.cjs',
     ],
   },
 

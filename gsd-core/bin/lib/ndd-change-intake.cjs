@@ -17,6 +17,8 @@ exports.generateChangeId = generateChangeId;
 exports.inferSourceRole = inferSourceRole;
 exports.ingestMarkdownSources = ingestMarkdownSources;
 exports.initializeChangeWorkspace = initializeChangeWorkspace;
+exports.readStatus = readStatus;
+exports.writeStatus = writeStatus;
 const node_crypto_1 = __importDefault(require("node:crypto"));
 const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
@@ -640,4 +642,12 @@ function initializeChangeWorkspace(opts) {
         status,
         resumed: existing !== null,
     };
+}
+function readStatus(workspaceDir) {
+    const statusPath = node_path_1.default.join(workspaceDir, 'STATUS.json');
+    return readExistingStatus(statusPath);
+}
+function writeStatus(workspaceDir, data) {
+    const statusPath = node_path_1.default.join(workspaceDir, 'STATUS.json');
+    (0, shell_command_projection_cjs_1.platformWriteSync)(statusPath, JSON.stringify(data, null, 2) + '\n');
 }

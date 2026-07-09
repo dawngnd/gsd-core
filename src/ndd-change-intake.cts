@@ -808,3 +808,14 @@ export function initializeChangeWorkspace(opts: InitializeChangeWorkspaceOptions
     resumed: existing !== null,
   };
 }
+
+export function readStatus(workspaceDir: string): NddChangeStatus | null {
+  const statusPath = path.join(workspaceDir, 'STATUS.json');
+  return readExistingStatus(statusPath);
+}
+
+export function writeStatus(workspaceDir: string, data: NddChangeStatus): void {
+  const statusPath = path.join(workspaceDir, 'STATUS.json');
+  platformWriteSync(statusPath, JSON.stringify(data, null, 2) + '\n');
+}
+

@@ -1732,6 +1732,45 @@ Command dispatch is then gated **twice**. Beyond that primary activation gate, t
 
 ---
 
+## NDD Namespaced Commands
+
+The NDD (NDD Brownfield Change Workflow) commands provide namespaced wrappers/adapters to plan, execute, verify, and ship brownfield changes while reusing GSD core mechanics.
+
+### `/ndd-verify-work`
+
+Verify completed NDD work against `CHANGE-SPEC.md` acceptance criteria.
+
+**Usage:**
+```bash
+/ndd-verify-work <change-id-or-phase>
+```
+
+**Behavior:**
+1. Resolves the NDD change and GSD phase link.
+2. Gates on canonical GSD verification status (`passed` is required).
+3. Parses `CHANGE-SPEC.md` for `## Acceptance Criteria`. If missing or empty, blocks and directs the user to `ndd-discuss-phase`.
+4. Maps criteria to evidence in GSD verification artifacts. If any criteria lack evidence, prompts the user for manual overrides (requiring reason and confirming person).
+5. Writes the NDD verification evidence to `.planning/ndd/changes/<change-id>/VERIFICATION.md` and updates the change `STATUS.json` with verification metadata.
+
+---
+
+### `/ndd-ship`
+
+Prepare and ship a verified NDD change using GSD ship mechanics.
+
+**Usage:**
+```bash
+/ndd-ship <change-id-or-phase>
+```
+
+**Behavior:**
+1. Gates on NDD verified status (`STATUS.json.verified === true`) and canonical GSD verification passed.
+2. Generates a lightweight pre-ship context artifact at `.planning/ndd/changes/<change-id>/SHIP-CONTEXT.md` containing concise links and summaries.
+3. Delegates actual PR and branch creation to canonical GSD ship (`/gsd-ship`).
+4. After successful GSD ship, updates `STATUS.json` with `shipped: true`, `shipped_at`, and optional PR metadata. If blocked, asks the user whether to transition to `ship_blocked` status.
+
+---
+
 ## Related
 
 - [Configuration Reference](CONFIGURATION.md)

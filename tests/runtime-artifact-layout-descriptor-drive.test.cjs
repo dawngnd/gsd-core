@@ -88,6 +88,7 @@ const GOLDEN = {
   ],
   'codex/local': [
     { kind: 'skills', destSubpath: 'skills', prefix: 'gsd-' },
+    { kind: 'skills', destSubpath: 'skills', prefix: 'ndd-' },
   ],
 
   // ── copilot ──────────────────────────────────────────────────────────────────
@@ -106,6 +107,7 @@ const GOLDEN = {
   ],
   'antigravity/local': [
     { kind: 'skills', destSubpath: 'skills', prefix: 'gsd-' },
+    { kind: 'skills', destSubpath: 'skills', prefix: 'ndd-' },
   ],
 
   // ── windsurf ─────────────────────────────────────────────────────────────────
